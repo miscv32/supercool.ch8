@@ -1,50 +1,39 @@
-/*
-Raylib example file.
-This is an example main file for a simple raylib project.
-Use this as a starting point or replace it with your code.
-
-by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit https://creativecommons.org/publicdomain/zero/1.0/
-
-*/
-
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
 #include "raylib.h"
+#include "myutils.h"
 
-#include "resource_dir.h"	// utility header for SearchAndSetResourceDir
+#include "resource_dir.h"
 
 #define COLOUR_OFF  CLITERAL(Color){ 139, 172, 15, 255 }  
 #define COLOUR_ON  CLITERAL(Color){ 48, 98, 48, 255 }  
 
-unsigned int get_display_index(uint8_t x, uint8_t y)
-{
-	return (y * 64) + x;
-}
-
-uint8_t get_display_y(unsigned int index)
-{
-	return index / 64;
-}
-
-uint8_t get_display_x(unsigned int index)
-{
-	return index % 64;
-}
+#define VX (registers[second_nibble])
+#define VY (registers[third_nibble])
+#define VF (registers[0xF])
+#define N (fourth_nibble)
+#define NN ((third_nibble << 4) | fourth_nibble)
+#define NNN ((uint16_t)(second_nibble << 8) | (uint16_t)(third_nibble << 4) | (uint16_t)(fourth_nibble))
 
 int main (int argc, char* argv[])
 {
-	// Tell the window to use vsync and work on high DPI displays
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
 
 	SetTargetFPS(60);
 
-	// Create the window and OpenGL context
-	InitWindow(1280, 640, "supercoolchip8"); // 64x32 CHIP-8 pixels
+	InitWindow(1280, 640, "supercoolchip8"); // 1 CHIP-8 pixel = 20x20 raylib rectangle
 
-	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
 	SearchAndSetResourceDir("resources");
 	
+	InitAudioDevice();
+	if (!IsAudioDeviceReady()) {
+		TraceLog(LOG_ERROR, "Failed to initialise audio device");
+	}
+	TraceLog(LOG_INFO, "Audio device initialised successfully");
+
+	Sound beep = LoadSound("beep.wav");
+
 	uint8_t ram[4096] = {0};
 	
 	uint8_t font[0x50] = {
@@ -68,14 +57,15 @@ int main (int argc, char* argv[])
 
 	memcpy(&ram[0x50], &font, sizeof(uint8_t)*0x50);
 	
-	FILE* rom_file_ptr = fopen("IBM Logo.ch8", "r");
+	FILE* rom_file_ptr = fopen("5-quirks.ch8", "rb");
 
 	if (!rom_file_ptr)
 	{
 		perror("Failed to open file");
 		CloseWindow();
 	}
-	for(int c = 0, k = 0; (c = fgetc(rom_file_ptr)) != EOF && k < 4096 - 0x200; k++)
+
+	for(int c = 0, k = 0; (c = fgetc(rom_file_ptr)) != EOF && k < (4096 - 0x200); k++)
 	{
 		ram[0x200 + k] = (uint8_t)(c);
 	}
@@ -92,96 +82,208 @@ int main (int argc, char* argv[])
 	uint8_t sound_timer;
 
 	uint16_t program_counter = 0x200;
-	uint8_t instructions_counter = 0; // how many instructions have been executed this frame
-	uint8_t instructions_per_frame = 12; // make this customisable 
 	uint16_t current_instruction = 0;
 
-	uint8_t registers[16];
-	uint8_t flags = 0;
-
+	uint8_t registers[16] = {0};
+	uint8_t VF_tmp = 0;
 	Color colours[2] = {COLOUR_OFF, COLOUR_ON};
-	// game loop
-	while (!WindowShouldClose())		// run the loop untill the user presses ESCAPE or presses the Close button on the window
+
+	while (!WindowShouldClose())	
 	{
-		// things we need to do every frame
-		// redraw display
-		// decrement delay and sound timers
-		// Execute some (configurable) number of instructions. 12 is a reasonable default I think
+		for (int instructions_counter = 0; instructions_counter < 10; instructions_counter++)
+		{			
+			current_instruction = ram[program_counter] << 8 | ram[program_counter + 1];
+			program_counter += 2;
+			uint8_t first_nibble = (uint8_t)(current_instruction >> 12) & 0xF;
+			uint8_t second_nibble = (uint8_t)(current_instruction >> 8) & 0xF;
+			uint8_t third_nibble = (uint8_t)(current_instruction >> 4) & 0xF;
+			uint8_t fourth_nibble = (uint8_t)(current_instruction) & 0xF;
 
-		// fetch
-		current_instruction = ram[program_counter] << 8 | ram[program_counter + 1];
-		program_counter += 2;
-
-		// decode + execute
-		uint8_t first_nibble = (uint8_t)(current_instruction >> 12) & 0xF;
-		uint8_t second_nibble = (uint8_t)(current_instruction >> 8) & 0xF;
-		uint8_t third_nibble = (uint8_t)(current_instruction >> 4) & 0xF;
-		uint8_t fourth_nibble = (uint8_t)(current_instruction) & 0xF;
-		switch (first_nibble)
-		{
-			case 0:
-				switch (second_nibble)
-				{
-					case 0:
-						switch (third_nibble)
-						{
-							case 0xE:
-							switch (fourth_nibble)
-							{
-								case 0:
-									memset(&display, 0, sizeof(bool)*2048);
-									break;
-							}
+			switch (first_nibble)
+			{
+				case 0:
+					switch (NNN)
+					{
+						case 0x0E0:
+							memset(&display, 0, sizeof(bool)*2048);
 							break;
+						case 0x0EE:
+							program_counter = stack[stack_pointer]; // stack underflow? who is she?
+							stack[stack_pointer] = 0;
+							stack_pointer--;
+							break;
+					}
+					break;
+				case 1:
+					program_counter = NNN;
+					break;
+				case 2:
+					stack_pointer++;
+					stack[stack_pointer] = program_counter; // stack overflow? who is he?
+					program_counter = NNN;
+					break;
+				case 3:		
+					if (VX == NN) program_counter += 2;
+					break;
+				case 4:
+					if (VX != NN) program_counter += 2;
+					break;
+				case 5:
+					if (VX == VY) program_counter += 2;
+					break;
+				case 6:					
+					VX = NN; 
+					break;
+				case 7:
+					VX += NN;
+					break;
+				case 8:
+					switch (fourth_nibble)
+					{
+						case 0:
+							VX = VY;
+							break;
+						case 1:
+							VX |= VY;
+							break;
+						case 2:
+							VX &= VY;
+							break;
+						case 3:
+							VX = VX ^ VY;
+							break;
+						case 4:	
+							if (((uint16_t)(VX) + (uint16_t)(VY)) > 255) VF_tmp = 1;
+							else VF_tmp = 0;
+							VX += VY;
+							VF = VF_tmp;
+							break;
+						case 5:
+							VF_tmp = (VX >= VY) ? 1 : 0;
+							VX = VX - VY;
+							VF = VF_tmp;
+							break;
+						case 6:
+							VF_tmp = VX & 1;
+							VX = VX >> 1;
+							VF = VF_tmp;
+							break;
+						case 7:	
+							VF_tmp = (VY >= VX) ? 1 : 0;
+							VX = VY - VX;
+							VF = VF_tmp;
+							break;	
+						case 0xE:
+							VF_tmp = (VX >> 7) & 1;
+							VX = VX << 1;
+							VF = VF_tmp;
+							break;
+					}
+					break;
+				case 9:
+					if (VX != VY) 
+						{
+							program_counter += 2;
 						}
 					break;
-				}
-			break;
-			case 1:
-				program_counter = (uint16_t)(second_nibble << 8) | (uint16_t)(third_nibble << 4) | (uint16_t)(fourth_nibble);
-				break;
-			case 6:
-				registers[second_nibble] = (third_nibble << 4) | fourth_nibble; 
-				break;
-			case 7:
-				registers[second_nibble] += (third_nibble << 4) | fourth_nibble;
-				break;
-			case 0xA:
-				index_register = (uint16_t)(second_nibble << 8) | (uint16_t)(third_nibble << 4) | (uint16_t)(fourth_nibble);
-				break;
-			case 0xD:
-				uint8_t x = registers[second_nibble] & 63;
-				uint8_t y = registers[third_nibble] & 31;
-				uint8_t n = fourth_nibble;
-				flags = 0;
-				for (int i = 0; i < n; i++)
-				{
-					uint8_t sprite_row = ram[index_register + i];
-					for(int j = 0; j < 8; j++)
+				case 0xA:
+					index_register = NNN;
+					break;
+				case 0xB:
+					program_counter = NNN + VX;
+					break;
+				case 0xC:
+					VX = NN & GetRandomValue(0, UINT8_MAX);
+					break;
+				case 0xD:
+					uint8_t x = VX & 63;
+					uint8_t y = VY & 31;
+					VF = 0;
+					for (int i = 0; i < N; i++)
 					{
-						bool sprite_pixel = (bool)((sprite_row >> (7 - j)) & 1);
-						bool* screen_pixel_ptr = &display[get_display_index(x+j,y)];
-						if (*screen_pixel_ptr && sprite_pixel)
+						uint8_t sprite_row = ram[index_register + i];
+						for(int j = 0; j < 8; j++)
 						{
-							*screen_pixel_ptr = 0;
-							flags = 1;
+							bool sprite_pixel = (bool)((sprite_row >> (7 - j)) & 1);
+							bool* screen_pixel_ptr = &display[get_display_index(x+j,y)];
+							if (*screen_pixel_ptr && sprite_pixel)
+							{
+								*screen_pixel_ptr = 0;
+								VF = 1;
+							}
+							else if (*screen_pixel_ptr == 0 && sprite_pixel == 1)
+							{
+								*screen_pixel_ptr = 1;
+							}
+							if (x+j == 63) break;
 						}
-						else if (*screen_pixel_ptr == 0 && sprite_pixel == 1)
-						{
-							*screen_pixel_ptr = 1;
-						}
-						if (x+j == 63) break;
+						y++;
+						if (y == 32) break;
 					}
-					y++;
-					if (y == 32) break;
-				}
-				break;
+					break;
+				case 0xE:
+					switch (NN)
+					{
+						case 0x9E:
+							if (GetKeyPressed() == map(VX & 0xF)) program_counter += 2;
+							break;
+						case 0xA1:
+							if (GetKeyPressed() != map(VX & 0xF)) program_counter += 2;
+							break;
+					}
+				case 0xF:
+					switch (NN)
+					{
+						case 0x07:
+							VX = delay_timer;
+							break;
+						case 0x15:
+							delay_timer = VX;
+							break;
+						case 0x18:
+							sound_timer = VX;
+							PlaySound(beep);
+							break;
+						case 0x1E:
+							if (((uint16_t)(VX) + (uint16_t)(index_register)) > 255) VF_tmp = 1;
+							index_register += VX;
+							VF = VF_tmp;
+							break;
+						case 0x0A:
+							program_counter -= 2;
+							int key = GetKeyPressed();
+							if (key)
+							{
+								program_counter += 2;
+								VX = unmap(key);
+							}
+							break;
+						case 0x29:
+							index_register = 0x50 +((VX & 0xF) * 5);
+							break;
+						case 0x33:
+							ram[index_register + 2] = VX % 10;
+							VX = VX / 10;
+							ram[index_register + 1] = VX % 10;
+							VX = VX / 10;
+							ram[index_register] = VX % 10;
+							break;
+						case 0x55:
+							memcpy(&ram[index_register], registers, sizeof(uint8_t)*(second_nibble+1));
+							break;
+						case 0x65:
+							memcpy(registers, &ram[index_register], sizeof(uint8_t)*(second_nibble+1));
+							break;		
+					}
+			}
 		}
 
-		// drawing
+		if (delay_timer > 0) delay_timer -= 1;
+		if (sound_timer > 0) sound_timer -= 1;
+		if (sound_timer = 0) StopSound(beep);
+
 		BeginDrawing();
 
-		// draw based on the display buffer
 		for (int i = 0; i < 2048; i++)
 		{
 			uint8_t x = get_display_x(i);
@@ -189,11 +291,9 @@ int main (int argc, char* argv[])
 			DrawRectangle(x*20, y*20, 20, 20, colours[display[i]]);
 		}
 		
-		// end the frame and get ready for the next one (display frame, poll input, etc...)
 		EndDrawing();
 	}
 
-	// destroy the window and cleanup the OpenGL context
 	CloseWindow();
 	return 0;
 }
