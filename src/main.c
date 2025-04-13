@@ -7,7 +7,7 @@
 #include "resource_dir.h"
 
 #define COLOUR_OFF  CLITERAL(Color){ 139, 172, 15, 255 }  
-#define COLOUR_ON  CLITERAL(Color){ 48, 98, 48, 255 }  
+#define COLOUR_ON  CLITERAL(Color){ 48, 98, 48, 255 } 
 
 #define VX (registers[second_nibble])
 #define VY (registers[third_nibble])
@@ -88,10 +88,19 @@ int main (int argc, char* argv[])
 	uint8_t VF_tmp = 0;
 	Color colours[2] = {COLOUR_OFF, COLOUR_ON};
 
+	bool key_state[16] = {0};
+
 	while (!WindowShouldClose())	
 	{
+		for (int i = 0; i < 16; i++) {
+			int raylib_key = map(i);
+			bool current_state = IsKeyDown(raylib_key);
+
+			key_state[i] = current_state;
+		}
+
 		for (int instructions_counter = 0; instructions_counter < 10; instructions_counter++)
-		{			
+		{	
 			current_instruction = ram[program_counter] << 8 | ram[program_counter + 1];
 			program_counter += 2;
 			uint8_t first_nibble = (uint8_t)(current_instruction >> 12) & 0xF;
@@ -225,12 +234,13 @@ int main (int argc, char* argv[])
 					switch (NN)
 					{
 						case 0x9E:
-							if (GetKeyPressed() == map(VX & 0xF)) program_counter += 2;
+							if (key_state[VX & 0xF]) program_counter += 2;
 							break;
 						case 0xA1:
-							if (GetKeyPressed() != map(VX & 0xF)) program_counter += 2;
+							if (!key_state[VX & 0xF]) program_counter += 2;
 							break;
 					}
+					break;
 				case 0xF:
 					switch (NN)
 					{
@@ -250,12 +260,19 @@ int main (int argc, char* argv[])
 							VF = VF_tmp;
 							break;
 						case 0x0A:
-							program_counter -= 2;
-							int key = GetKeyPressed();
-							if (key)
 							{
-								program_counter += 2;
-								VX = unmap(key);
+								bool any_key_pressed = false;
+								for (int i = 0; i < 16; i++) {
+									if (key_state[i]) {
+										VX = i;
+										any_key_pressed = true;
+										break;
+									}
+								}
+								
+								if (!any_key_pressed) {
+									program_counter -= 2;
+								}
 							}
 							break;
 						case 0x29:
@@ -275,6 +292,7 @@ int main (int argc, char* argv[])
 							memcpy(registers, &ram[index_register], sizeof(uint8_t)*(second_nibble+1));
 							break;		
 					}
+					break;
 			}
 		}
 
