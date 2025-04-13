@@ -16,6 +16,13 @@
 #define NN ((third_nibble << 4) | fourth_nibble)
 #define NNN ((uint16_t)(second_nibble << 8) | (uint16_t)(third_nibble << 4) | (uint16_t)(fourth_nibble))
 
+#define Q_VF_RESET
+#define Q_MEMORY 
+#define Q_DISPLAY_WAIT
+#define Q_CLIPPING
+// #define Q_SHIFTING
+// #define Q_JUMPING
+
 int main (int argc, char* argv[])
 {
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
@@ -89,7 +96,6 @@ int main (int argc, char* argv[])
 	Color colours[2] = {COLOUR_OFF, COLOUR_ON};
 
 	bool key_state[16] = {0};
-
 	while (!WindowShouldClose())	
 	{
 		for (int i = 0; i < 16; i++) {
@@ -99,7 +105,9 @@ int main (int argc, char* argv[])
 			key_state[i] = current_state;
 		}
 
-		for (int instructions_counter = 0; instructions_counter < 10; instructions_counter++)
+		bool draw_now = false;
+
+		for (int instructions_counter = 0; instructions_counter < 10 && !draw_now; instructions_counter++)
 		{	
 			current_instruction = ram[program_counter] << 8 | ram[program_counter + 1];
 			program_counter += 2;
@@ -154,12 +162,21 @@ int main (int argc, char* argv[])
 							break;
 						case 1:
 							VX |= VY;
+							#ifdef Q_VF_RESET
+							VF = 0;
+							#endif
 							break;
 						case 2:
 							VX &= VY;
+							#ifdef Q_VF_RESET
+							VF = 0;
+							#endif
 							break;
 						case 3:
 							VX = VX ^ VY;
+							#ifdef Q_VF_RESET
+							VF = 0;
+							#endif
 							break;
 						case 4:	
 							if (((uint16_t)(VX) + (uint16_t)(VY)) > 255) VF_tmp = 1;
@@ -173,6 +190,9 @@ int main (int argc, char* argv[])
 							VF = VF_tmp;
 							break;
 						case 6:
+							#ifndef Q_SHIFTING
+							VX = VY;
+							#endif
 							VF_tmp = VX & 1;
 							VX = VX >> 1;
 							VF = VF_tmp;
@@ -183,6 +203,9 @@ int main (int argc, char* argv[])
 							VF = VF_tmp;
 							break;	
 						case 0xE:
+							#ifndef Q_SHIFTING
+							VX = VY;
+							#endif
 							VF_tmp = (VX >> 7) & 1;
 							VX = VX << 1;
 							VF = VF_tmp;
@@ -199,14 +222,18 @@ int main (int argc, char* argv[])
 					index_register = NNN;
 					break;
 				case 0xB:
-					program_counter = NNN + VX;
+					uint8_t offset = registers[0];
+					#ifdef Q_JUMPING
+					offset = VX;
+					#endif
+					program_counter = NNN + offset;
 					break;
 				case 0xC:
 					VX = NN & GetRandomValue(0, UINT8_MAX);
 					break;
 				case 0xD:
-					uint8_t x = VX & 63;
-					uint8_t y = VY & 31;
+					uint8_t x = VX % 64;
+					uint8_t y = VY % 32;
 					VF = 0;
 					for (int i = 0; i < N; i++)
 					{
@@ -214,7 +241,7 @@ int main (int argc, char* argv[])
 						for(int j = 0; j < 8; j++)
 						{
 							bool sprite_pixel = (bool)((sprite_row >> (7 - j)) & 1);
-							bool* screen_pixel_ptr = &display[get_display_index(x+j,y)];
+							bool* screen_pixel_ptr = &display[get_display_index((x+j) % 64, y % 32)];
 							if (*screen_pixel_ptr && sprite_pixel)
 							{
 								*screen_pixel_ptr = 0;
@@ -224,11 +251,18 @@ int main (int argc, char* argv[])
 							{
 								*screen_pixel_ptr = 1;
 							}
+							#ifdef Q_CLIPPING
 							if (x+j == 63) break;
+							#endif
 						}
 						y++;
+						#ifdef Q_CLIPPING
 						if (y == 32) break;
+						#endif
 					}
+					#ifdef Q_DISPLAY_WAIT
+					draw_now = true;
+					#endif
 					break;
 				case 0xE:
 					switch (NN)
@@ -287,9 +321,15 @@ int main (int argc, char* argv[])
 							break;
 						case 0x55:
 							memcpy(&ram[index_register], registers, sizeof(uint8_t)*(second_nibble+1));
+							#ifdef Q_MEMORY
+							index_register += second_nibble + 1;
+							#endif
 							break;
 						case 0x65:
 							memcpy(registers, &ram[index_register], sizeof(uint8_t)*(second_nibble+1));
+							#ifdef Q_MEMORY
+							index_register += second_nibble + 1;
+							#endif
 							break;		
 					}
 					break;
