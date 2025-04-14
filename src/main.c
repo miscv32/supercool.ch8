@@ -290,7 +290,6 @@ int main (int argc, char* argv[])
 							break;
 						case 0x1E:
 							index_register += VX;
-							VF = VF_tmp;
 							break;
 						case 0x0A:
 							{
