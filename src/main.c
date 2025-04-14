@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "raylib.h"
 #include "myutils.h"
 
@@ -23,6 +24,22 @@
 // #define Q_SHIFTING
 // #define Q_JUMPING
 
+int randomSample(float gain) {
+
+    return rand();
+}
+
+void generateSamples(void * buffer, unsigned int frames) {
+
+    /* This audio callback fills a mono buffer with random
+    32-bit integer samples.*/
+
+    short * samples = (short *)buffer;
+
+    for (unsigned int i; i<frames; i++) samples[i] = randomSample(1.0f);
+}
+
+
 int main (int argc, char* argv[])
 {
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
@@ -34,10 +51,12 @@ int main (int argc, char* argv[])
 	SearchAndSetResourceDir("resources");
 	
 	InitAudioDevice();
-	if (!IsAudioDeviceReady()) {
-		TraceLog(LOG_ERROR, "Failed to initialise audio device");
-	}
-	TraceLog(LOG_INFO, "Audio device initialised successfully");
+
+	AudioStream stream = LoadAudioStream(48000, 32, 1);
+
+    SetAudioStreamBufferSizeDefault(48000*5);
+	SetAudioStreamVolume(stream, 0.5f);
+    AttachAudioStreamProcessor(stream, generateSamples);
 
 	Sound beep = LoadSound("beep.wav");
 
@@ -64,7 +83,7 @@ int main (int argc, char* argv[])
 
 	memcpy(&ram[0x50], &font, sizeof(uint8_t)*0x50);
 	
-	FILE* rom_file_ptr = fopen("5-quirks.ch8", "rb");
+	FILE* rom_file_ptr = fopen("7-beep.ch8", "rb");
 
 	if (!rom_file_ptr)
 	{
@@ -95,20 +114,27 @@ int main (int argc, char* argv[])
 	uint8_t VF_tmp = 0;
 	Color colours[2] = {COLOUR_OFF, COLOUR_ON};
 
-	bool key_state[16] = {0};
+	static bool key_state[16] = {0};
+	
+	int FX0A_key_to_release = -1;
 	while (!WindowShouldClose())	
 	{
-		for (int i = 0; i < 16; i++) {
-			int raylib_key = map(i);
-			bool current_state = IsKeyDown(raylib_key);
-
-			key_state[i] = current_state;
-		}
-
 		bool draw_now = false;
 
 		for (int instructions_counter = 0; instructions_counter < 10 && !draw_now; instructions_counter++)
 		{	
+			for (int i = 0; i < 16; i++) {
+				int raylib_key = map(i);
+				bool current_state = IsKeyDown(raylib_key);
+				if (FX0A_key_to_release == i && current_state == 0 && key_state[i] == 1) // if we've just released a key that FX0A is waiting for to be released, go to the next instruction (i.e. skip the FX0A that would otherwise have been executed)
+				{
+					program_counter += 2;
+					FX0A_key_to_release = -1;
+				}
+				key_state[i] = current_state;
+				
+			}
+	
 			current_instruction = ram[program_counter] << 8 | ram[program_counter + 1];
 			program_counter += 2;
 			uint8_t first_nibble = (uint8_t)(current_instruction >> 12) & 0xF;
@@ -286,7 +312,7 @@ int main (int argc, char* argv[])
 							break;
 						case 0x18:
 							sound_timer = VX;
-							PlaySound(beep);
+							PlayAudioStream(stream);
 							break;
 						case 0x1E:
 							if (((uint16_t)(VX) + (uint16_t)(index_register)) > 255) VF_tmp = 1;
@@ -296,15 +322,23 @@ int main (int argc, char* argv[])
 						case 0x0A:
 							{
 								bool any_key_pressed = false;
-								for (int i = 0; i < 16; i++) {
-									if (key_state[i]) {
+								for (int i = 0; i < 16; i++) 
+								{
+									if (key_state[i]) 
+									{
 										VX = i;
 										any_key_pressed = true;
+										FX0A_key_to_release = i;
 										break;
 									}
 								}
-								
-								if (!any_key_pressed) {
+
+								if (!any_key_pressed) 
+								{
+									program_counter -= 2;
+								}
+								else if (FX0A_key_to_release != -1 && key_state[FX0A_key_to_release])
+								{
 									program_counter -= 2;
 								}
 							}
@@ -336,9 +370,7 @@ int main (int argc, char* argv[])
 			}
 		}
 
-		if (delay_timer > 0) delay_timer -= 1;
-		if (sound_timer > 0) sound_timer -= 1;
-		if (sound_timer = 0) StopSound(beep);
+
 
 		BeginDrawing();
 
@@ -350,8 +382,13 @@ int main (int argc, char* argv[])
 		}
 		
 		EndDrawing();
+		if (delay_timer > 0) delay_timer -= 1;
+		if (sound_timer > 0) sound_timer -= 1;
+		if (sound_timer = 0) StopAudioStream(stream);
 	}
-
+	UnloadAudioStream(stream);
+    DetachAudioStreamProcessor(stream, generateSamples);
+	CloseAudioDevice();
 	CloseWindow();
 	return 0;
 }
