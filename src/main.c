@@ -289,7 +289,6 @@ int main (int argc, char* argv[])
 							// just pretend that we played a sound here
 							break;
 						case 0x1E:
-							if (((uint16_t)(VX) + (uint16_t)(index_register)) > 255) VF_tmp = 1;
 							index_register += VX;
 							VF = VF_tmp;
 							break;
