@@ -4,7 +4,7 @@ a chip-8 ~~emulator~~ interpreter written in c (using raylib for graphics)
 # current progress
 passes tests 1-6 from [Timendus](https://github.com/Timendus/chip8-test-suite), targeting chip-8 only (not schip/xo-chip)
 
-sound does not work properly
+no audio
 
 # screenshots
 ![image](https://github.com/user-attachments/assets/2c793abe-ebd7-470e-a59b-35c62250c135)

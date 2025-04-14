@@ -24,22 +24,6 @@
 // #define Q_SHIFTING
 // #define Q_JUMPING
 
-int randomSample(float gain) {
-
-    return rand();
-}
-
-void generateSamples(void * buffer, unsigned int frames) {
-
-    /* This audio callback fills a mono buffer with random
-    32-bit integer samples.*/
-
-    short * samples = (short *)buffer;
-
-    for (unsigned int i; i<frames; i++) samples[i] = randomSample(1.0f);
-}
-
-
 int main (int argc, char* argv[])
 {
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
@@ -49,16 +33,6 @@ int main (int argc, char* argv[])
 	InitWindow(1280, 640, "supercoolchip8"); // 1 CHIP-8 pixel = 20x20 raylib rectangle
 
 	SearchAndSetResourceDir("resources");
-	
-	InitAudioDevice();
-
-	AudioStream stream = LoadAudioStream(48000, 32, 1);
-
-    SetAudioStreamBufferSizeDefault(48000*5);
-	SetAudioStreamVolume(stream, 0.5f);
-    AttachAudioStreamProcessor(stream, generateSamples);
-
-	Sound beep = LoadSound("beep.wav");
 
 	uint8_t ram[4096] = {0};
 	
@@ -312,7 +286,7 @@ int main (int argc, char* argv[])
 							break;
 						case 0x18:
 							sound_timer = VX;
-							PlayAudioStream(stream);
+							// just pretend that we played a sound here
 							break;
 						case 0x1E:
 							if (((uint16_t)(VX) + (uint16_t)(index_register)) > 255) VF_tmp = 1;
@@ -384,11 +358,9 @@ int main (int argc, char* argv[])
 		EndDrawing();
 		if (delay_timer > 0) delay_timer -= 1;
 		if (sound_timer > 0) sound_timer -= 1;
-		if (sound_timer = 0) StopAudioStream(stream);
+		if (sound_timer = 0) /*pretend we stopped the beep*/ 0;
 	}
-	UnloadAudioStream(stream);
-    DetachAudioStreamProcessor(stream, generateSamples);
-	CloseAudioDevice();
+
 	CloseWindow();
 	return 0;
 }
