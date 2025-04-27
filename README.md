@@ -1,4 +1,4 @@
-# supercoolchip8
+# supercool.ch8
 a chip-8 ~~emulator~~ interpreter written in c (using raylib for graphics)
 
 # current progress
