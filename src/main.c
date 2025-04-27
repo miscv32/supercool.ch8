@@ -57,7 +57,7 @@ int main (int argc, char* argv[])
 
 	memcpy(&ram[0x50], &font, sizeof(uint8_t)*0x50);
 	
-	FILE* rom_file_ptr = fopen("7-beep.ch8", "rb");
+	FILE* rom_file_ptr = fopen("tetris.ch8", "rb");
 
 	if (!rom_file_ptr)
 	{
@@ -125,9 +125,9 @@ int main (int argc, char* argv[])
 							memset(&display, 0, sizeof(bool)*2048);
 							break;
 						case 0x0EE:
+							stack_pointer--;
 							program_counter = stack[stack_pointer]; // stack underflow? who is she?
 							stack[stack_pointer] = 0;
-							stack_pointer--;
 							break;
 					}
 					break;
@@ -135,8 +135,8 @@ int main (int argc, char* argv[])
 					program_counter = NNN;
 					break;
 				case 2:
-					stack_pointer++;
 					stack[stack_pointer] = program_counter; // stack overflow? who is he?
+					stack_pointer++;
 					program_counter = NNN;
 					break;
 				case 3:		
@@ -149,7 +149,7 @@ int main (int argc, char* argv[])
 					if (VX == VY) program_counter += 2;
 					break;
 				case 6:					
-					VX = NN; 
+					VX = NN;
 					break;
 				case 7:
 					VX += NN;
@@ -213,10 +213,7 @@ int main (int argc, char* argv[])
 					}
 					break;
 				case 9:
-					if (VX != VY) 
-						{
-							program_counter += 2;
-						}
+					if (VX != VY) program_counter += 2;
 					break;
 				case 0xA:
 					index_register = NNN;
@@ -319,11 +316,12 @@ int main (int argc, char* argv[])
 							index_register = 0x50 +((VX & 0xF) * 5);
 							break;
 						case 0x33:
-							ram[index_register + 2] = VX % 10;
-							VX = VX / 10;
-							ram[index_register + 1] = VX % 10;
-							VX = VX / 10;
-							ram[index_register] = VX % 10;
+							int value = VX;
+							ram[index_register + 2] = value % 10;
+							value = value / 10;
+							ram[index_register + 1] = value % 10;
+							value = value / 10;
+							ram[index_register] = value % 10;
 							break;
 						case 0x55:
 							memcpy(&ram[index_register], registers, sizeof(uint8_t)*(second_nibble+1));
@@ -356,7 +354,8 @@ int main (int argc, char* argv[])
 		EndDrawing();
 		if (delay_timer > 0) delay_timer -= 1;
 		if (sound_timer > 0) sound_timer -= 1;
-		if (sound_timer = 0) /*pretend we stopped the beep*/ 0;
+		if (sound_timer == 0) /*pretend we stopped the beep*/ 0;
+
 	}
 
 	CloseWindow();
